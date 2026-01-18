@@ -1,0 +1,44 @@
+# 🌞 PV Power Forecasting with Deep Learning (Australia)
+
+This project implements a **clean, reproducible pipeline** for **photovoltaic (PV) power forecasting**
+using deep learning models in PyTorch.
+
+The focus is on:
+- Robust **time-series evaluation**
+- Fair model comparison using **MASE**
+- Clean separation between **training** and **inference**
+- Physics-aware feature engineering (solar, weather)
+
+---
+
+## 📁 Project Structure
+
+```text
+project/
+│
+├── train.py                # Training + model selection
+├── inference.py            # Load best model + evaluation + plots
+│
+├── models/
+│   ├── LSTM.py
+│   ├── GRU.py
+│   ├── LSTM_FCN.py
+│   └── TransformerForecast.py
+│
+├── utils/
+│   ├── metrics.py          # RMSE, MASE
+│   ├── plots.py            # Visualization utilities
+│   └── logger.py           # Automatic experiment logging
+│
+├── data/
+│   └── Processed/
+│       ├── train.xlsx
+│       ├── val.xlsx
+│       ├── test.xlsx
+│       └── new_test.xlsx
+│
+├── logs/
+│   ├── experiments.csv     # Automatic experiment log
+│   └── train.log           # Console + file logging
+│
+└── best_model.pth
