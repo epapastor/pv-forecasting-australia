@@ -78,7 +78,7 @@ class TimeSeriesDataset(Dataset):
 def training_model(model, dataloader, num_epochs, learning_rate, device):
     model.to(device)
     criterion = nn.L1Loss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,weight_decay=1e-4)
 
     for epoch in range(num_epochs):
         model.train()
@@ -92,6 +92,7 @@ def training_model(model, dataloader, num_epochs, learning_rate, device):
             loss = criterion(preds.squeeze(), y_batch.squeeze())
 
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
             running_loss += loss.item()
@@ -218,16 +219,16 @@ def training():
     # --------------------------------------------------
     MODEL_ZOO = {
         "LSTM": lambda: LSTM_two_layers(
-            input_size, hidden_size, output_size, dropout
+            input_size, hidden_size, output_size, dropout = 0.25
         ),
         "GRU": lambda: GRU_two_layers(
-            input_size, hidden_size, output_size, dropout
+            input_size, hidden_size, output_size, dropout = 0.15
         ),
         "LSTM_FCN": lambda: LSTM_FCN(
             input_size=input_size,
             hidden_size=hidden_size,
             output_window=output_window,
-            dropout=dropout,
+            dropout=0.35,
         ),
     }
 
