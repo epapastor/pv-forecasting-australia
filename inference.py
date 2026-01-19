@@ -102,7 +102,8 @@ def inference_model(model, dataloader, device):
 def run_inference():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("Using device:", device)
-
+    inf_x, inf_y = Pipeline.load_split("inference", DATA_PATH)
+    input_size = inf_x.shape[1]
     # --------------------------------------------------
     # PATHS
     # --------------------------------------------------
@@ -114,14 +115,15 @@ def run_inference():
     # --------------------------------------------------
     model, model_name, model_params = load_trained_model(
         CHECKPOINT_PATH,
-        device
+        device,
+        input_size = input_size,
     )
 
     # --------------------------------------------------
     # LOAD DATA
     # --------------------------------------------------
-    inf_x, inf_y = Pipeline.load_split("inference", DATA_PATH)
-
+    
+    
     ds_inf = Pipeline.TimeSeriesDataset(
         inf_x,
         inf_y,
