@@ -477,31 +477,26 @@ def pipeline():
     # ==================================================
 
     # y_train está estandarizada → volver a escala REAL
-    y_train_real = y_train["Energy"] * y_std["Energy"] + y_mu["Energy"]
+    
 
-    # MASE scale (solo se calcula UNA VEZ, en TRAIN)
-    m = 24
-    naive_diff = np.abs(y_train_real[m:] - y_train_real[:-m])
-    mase_scale = np.mean(naive_diff)
+    
 
     stats = {
-    "X": {
-        "numeric_cols": x_cols,
-        "mu": x_mu,
-        "std": x_std,
-    },
-    "Y": {
-        "numeric_cols": y_cols,
-        "mu": y_mu,
-        "std": y_std,
-    },
-    "mase": {
-        "scale": mase_scale,
-        "m": m,
-    },
-    
+        "X": {
+            "numeric_cols": x_cols,
+            "mu": x_mu,
+            "std": x_std,
+        },
+        "Y": {
+            "numeric_cols": y_cols,
+            "mu": y_mu,
+            "std": y_std,
+        },
+        "mase": {
+            "scale": mase_scale,
+            "m": m,
+        },
     }
-
 
     with open(OUT_DIR / "stats.pkl", "wb") as f:
         pickle.dump(stats, f)
