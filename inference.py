@@ -32,7 +32,11 @@ MODEL_FACTORY = {
 # ================= LOAD TRAINED MODEL ================
 # ======================================================
 def load_trained_model(checkpoint_path, device):
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    checkpoint = torch.load(
+        checkpoint_path,
+        map_location=device,
+        weights_only=False,  # 🔑 PyTorch 2.6 fix
+    )
 
     # ---- Sanity checks ----
     assert "model_name" in checkpoint, "Checkpoint missing model_name"
