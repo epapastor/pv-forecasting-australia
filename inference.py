@@ -8,15 +8,13 @@ from pathlib import Path
 from torch.utils.data import DataLoader
 
 from models.LSTM import LSTM_two_layers
-from train import TimeSeriesDataset, load_split
+from Pipeline import TimeSeriesDataset, load_split
 
 # ======================================================
 # =================== HELPERS ==========================
 # ======================================================
 def load_trained_model(model_class, checkpoint_path, device):
     checkpoint = torch.load(checkpoint_path, map_location=device)
-
-    assert checkpoint["model_type"] == "LSTM_two_layers"
 
     cfg = checkpoint["config"]
 
@@ -36,8 +34,8 @@ def load_trained_model(model_class, checkpoint_path, device):
 
 def inference_model(model, dataloader, device):
     preds = []
-    model.eval()
 
+    model.eval()
     with torch.no_grad():
         for x, _ in dataloader:
             x = x.to(device)
@@ -52,15 +50,17 @@ def inference_model(model, dataloader, device):
 def run_inference():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    MODEL_PATH = "./checkpoints/lstm_two_layers.pt"
+    MODEL_PATH = "./checkpoints/lstm_model.pt"
     DATA_PATH = "./data/Processed"
 
     # ------------------ LOAD MODEL ---------------------
     model, cfg = load_trained_model(
-        LSTM_two_layers, MODEL_PATH, device
+        LSTM_two_layers,
+        MODEL_PATH,
+        device
     )
 
-    # ------------------ DATA ---------------------------
+    # ------------------ LOAD DATA ---------------------
     inf_x, inf_y = load_split("inference", DATA_PATH)
 
     ds_inf = TimeSeriesDataset(
@@ -69,12 +69,15 @@ def run_inference():
         length=cfg["length"],
         lag=cfg["lag"],
         output_window=cfg["output_window"],
+        stride=1,
     )
 
     dl_inf = DataLoader(ds_inf, batch_size=64, shuffle=False)
 
     # ------------------ INFERENCE ----------------------
     preds = inference_model(model, dl_inf, device)
+
+    # Invertir log
     preds_real = np.expm1(preds)
 
     # ------------------ SAVE ---------------------------
