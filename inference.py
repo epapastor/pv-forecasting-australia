@@ -11,13 +11,9 @@ import torch.nn as nn
 from pathlib import Path
 from torch.utils.data import DataLoader
 
-# Reutilizamos el Dataset de training
 from train import TimeSeriesDataset
-
-# Modelo (elige uno solo aquí)
 from models.LSTM import LSTM_two_layers
 
-# Plots (ajusta imports si tus nombres difieren)
 from utils.plots import (
     plot_continuous_horizon0,
     plot_one_day,
@@ -83,7 +79,9 @@ def main():
     # --------------------------------------------------
     checkpoint = torch.load(CKPT_PATH, map_location=device, weights_only=False)
 
-    input_size = checkpoint["input_size"]
+    # Asegúrate de que tu checkpoint guarda esto:
+    # checkpoint["state_dict"]
+    state_dict = checkpoint["state_dict"]
 
     # --------------------------------------------------
     # Load inference data
@@ -96,23 +94,13 @@ def main():
     if "Energy" not in df_inf.columns:
         raise ValueError(
             "inference.xlsx debe contener columna 'Energy' para métricas. "
-            "Si solo quieres predicciones sin métricas, dímelo y te lo adapto."
+            "Si solo quieres predicciones sin métricas, te lo adapto."
         )
 
     y_inf = df_inf["Energy"].to_numpy(dtype=np.float32)
-    X_inf_df = df_inf.drop(columns=["Energy"])
+    X_inf = df_inf.drop(columns=["Energy"]).to_numpy(dtype=np.float32)
 
-    # --------------------------------------------------
-    # Feature alignment (robusto)
-    # - elimina extra
-    # - añade faltantes con 0
-    # - respeta orden del training
-    # --------------------------------------------------
-    
-    if X_inf_df.shape[1] != input_size:
-        raise ValueError(f"Feature mismatch: {X_inf_df.shape[1]} vs {input_size}")
-
-    X_inf = X_inf_df.to_numpy(dtype=np.float32)
+    input_size = X_inf.shape[1]
 
     # --------------------------------------------------
     # Load train_y for MASE scaling
@@ -138,7 +126,7 @@ def main():
         dropout=cfg["dropout"],
     )
 
-    model.load_state_dict(checkpoint["state_dict"])
+    model.load_state_dict(state_dict)
     model.to(device)
     model.eval()
 
