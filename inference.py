@@ -74,7 +74,7 @@ def load_trained_model(checkpoint_path, device, input_size):
     print("  model_name:", model_name)
     print("  model_params:", model_params)
 
-    return model, model_name, model_params
+    return model, model_name, model_params,  checkpoint["config"]
 
 
 
@@ -113,7 +113,7 @@ def run_inference():
     # --------------------------------------------------
     # LOAD MODEL
     # --------------------------------------------------
-    model, model_name, model_params = load_trained_model(
+    model, model_name, model_params, cfg = load_trained_model(
         CHECKPOINT_PATH,
         device,
         input_size = input_size,
@@ -127,8 +127,8 @@ def run_inference():
     ds_inf = Pipeline.TimeSeriesDataset(
         inf_x,
         inf_y,
-        length=model_params["length"],
-        lag=model_params["lag"],
+        length=cfg["model"]["length"],
+        lag= cfg["model"]["length"],
         output_window=model_params["output_window"],
         stride=1,
     )
