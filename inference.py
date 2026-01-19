@@ -6,10 +6,13 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from torch.utils.data import DataLoader
-import pickle
 
-import Pipeline
+import Pipeline_2 as Pipeline
+
 from models.LSTM import LSTM_two_layers
+from models.GRU import GRU_two_layers
+from models.LSTM_FCN import LSTM_FCN
+
 from utils.graph_pipeline import (
     plot_continuous_horizon0,
     plot_one_day,
@@ -17,27 +20,45 @@ from utils.graph_pipeline import (
 )
 
 # ======================================================
-# =================== HELPERS ==========================
+# ================= MODEL FACTORY ======================
 # ======================================================
-def load_trained_model(model_class, checkpoint_path, device):
+MODEL_FACTORY = {
+    "LSTM": LSTM_two_layers,
+    "GRU": GRU_two_layers,
+    "LSTM_FCN": LSTM_FCN,
+}
+
+# ======================================================
+# ================= LOAD TRAINED MODEL ================
+# ======================================================
+def load_trained_model(checkpoint_path, device):
     checkpoint = torch.load(checkpoint_path, map_location=device)
 
-    cfg = checkpoint["config"]
+    # ---- Sanity checks ----
+    assert "model_name" in checkpoint, "Checkpoint missing model_name"
+    assert "state_dict" in checkpoint, "Checkpoint missing state_dict"
+    assert "model_params" in checkpoint, "Checkpoint missing model_params"
 
-    model = model_class(
-        input_size=cfg["input_size"],
-        hidden_size=cfg["hidden_size"],
-        output_size=cfg["output_size"],
-        dropout=cfg["dropout"],
-    )
+    model_name = checkpoint["model_name"]
+    model_params = checkpoint["model_params"]
 
-    model.load_state_dict(checkpoint["model_state_dict"], strict=True)
+    print("\nLoaded checkpoint")
+    print("  model_name:", model_name)
+    print("  model_params:", model_params)
+
+    model_class = MODEL_FACTORY[model_name]
+    model = model_class(**model_params)
+
+    model.load_state_dict(checkpoint["state_dict"], strict=True)
     model.to(device)
     model.eval()
 
-    return model, cfg
+    return model, model_name, model_params
 
 
+# ======================================================
+# =================== INFERENCE ========================
+# ======================================================
 def inference_model(model, dataloader, device):
     preds, targets = [], []
 
@@ -54,69 +75,78 @@ def inference_model(model, dataloader, device):
 
 
 # ======================================================
-# =================== INFERENCE ========================
+# =================== RUN ==============================
 # ======================================================
 def run_inference():
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    print("Using device:", device)
 
-    MODEL_PATH = "./checkpoints/lstm_model.pt"
+    # --------------------------------------------------
+    # PATHS
+    # --------------------------------------------------
+    CHECKPOINT_PATH = "./checkpoints/best_model_LSTM_FCN.pt"  # ⬅️ ajusta si hace falta
     DATA_PATH = "./data/Processed"
 
-    # ==================================================
-    # =============== LOAD STATS =======================
-    # ==================================================
-    with open(f"{DATA_PATH}/stats.pkl", "rb") as f:
-        stats = pickle.load(f)
-
-    y_mu = stats["Y"]["mu"]["Energy"]
-    y_std = stats["Y"]["std"]["Energy"]
-
-    mase_scale = stats["mase"]["scale"]
-
-    # ------------------ LOAD MODEL ---------------------
-    model, cfg = load_trained_model(
-        LSTM_two_layers,
-        MODEL_PATH,
+    # --------------------------------------------------
+    # LOAD MODEL
+    # --------------------------------------------------
+    model, model_name, model_params = load_trained_model(
+        CHECKPOINT_PATH,
         device
     )
 
-    # ------------------ LOAD DATA ---------------------
+    # --------------------------------------------------
+    # LOAD DATA
+    # --------------------------------------------------
     inf_x, inf_y = Pipeline.load_split("inference", DATA_PATH)
 
     ds_inf = Pipeline.TimeSeriesDataset(
         inf_x,
         inf_y,
-        length=cfg["length"],
-        lag=cfg["lag"],
-        output_window=cfg["output_window"],
+        length=model_params["length"],
+        lag=model_params["lag"],
+        output_window=model_params["output_window"],
         stride=1,
     )
 
-    dl_inf = DataLoader(ds_inf, batch_size=64, shuffle=False)
-
-    # ------------------ INFERENCE ----------------------
-    preds, targets = inference_model(model, dl_inf, device)
-
-    # ------------------ DESNORMALIZAR ------------------
-    preds_real = preds * y_std + y_mu
-    targets_real = targets * y_std + y_mu
-
-    # ------------------ METRICS ------------------------
-    rmse_h0 = np.sqrt(
-        np.mean((targets_real[:, 0] - preds_real[:, 0]) ** 2)
+    dl_inf = DataLoader(
+        ds_inf,
+        batch_size=64,
+        shuffle=False,
     )
 
-    mase_h0 = np.mean(
-        np.abs(targets_real[:, 0] - preds_real[:, 0])
-    ) / (mase_scale + 1e-8)
+    # --------------------------------------------------
+    # INFERENCE
+    # --------------------------------------------------
+    preds, targets = inference_model(model, dl_inf, device)
+
+    # --------------------------------------------------
+    # NO DESNORMALIZACIÓN (modelo entrenado en kWh)
+    # --------------------------------------------------
+    preds_real = preds
+    targets_real = targets
+
+    # --------------------------------------------------
+    # METRICS (solo horas con producción)
+    # --------------------------------------------------
+    mask = targets_real[:, 0] > 0.1
+
+    mae_h0 = np.mean(
+        np.abs(preds_real[mask, 0] - targets_real[mask, 0])
+    )
+
+    rmse_h0 = np.sqrt(
+        np.mean((preds_real[mask, 0] - targets_real[mask, 0]) ** 2)
+    )
 
     print("\n========== INFERENCE METRICS ==========")
+    print(f"Model: {model_name}")
+    print(f"MAE horizon=0 (kWh):  {mae_h0:.3f}")
     print(f"RMSE horizon=0 (kWh): {rmse_h0:.3f}")
-    print(f"MASE horizon=0:       {mase_h0:.3f}")
 
-    # ==================================================
-    # =================== PLOTS ========================
-    # ==================================================
+    # --------------------------------------------------
+    # PLOTS
+    # --------------------------------------------------
     plot_continuous_horizon0(
         targets_real,
         preds_real,
@@ -127,15 +157,17 @@ def run_inference():
     plot_one_day(
         targets_real,
         preds_real,
-        day_idx=10
+        day_idx=10,
     )
 
     plot_scatter_real_vs_pred(
         targets_real,
-        preds_real
+        preds_real,
     )
 
-    # ------------------ SAVE ---------------------------
+    # --------------------------------------------------
+    # SAVE OUTPUT
+    # --------------------------------------------------
     df = pd.DataFrame(
         preds_real,
         columns=[f"horizon_{i}" for i in range(preds_real.shape[1])]

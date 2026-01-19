@@ -226,7 +226,7 @@ def training():
         ),
         "LSTM_FCN": lambda: LSTM_FCN(
             input_size=input_size,
-            hidden_size=hidden_size,
+            hidden_size=96,
             output_window=output_window,
             dropout=0.35,
         ),
