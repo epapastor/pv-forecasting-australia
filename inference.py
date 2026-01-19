@@ -83,7 +83,6 @@ def main():
     # --------------------------------------------------
     checkpoint = torch.load(CKPT_PATH, map_location=device, weights_only=False)
 
-    train_cols = checkpoint["feature_columns"]
     input_size = checkpoint["input_size"]
 
     # --------------------------------------------------
@@ -109,8 +108,7 @@ def main():
     # - añade faltantes con 0
     # - respeta orden del training
     # --------------------------------------------------
-    X_inf_df = X_inf_df.reindex(columns=train_cols, fill_value=0.0)
-
+    
     if X_inf_df.shape[1] != input_size:
         raise ValueError(f"Feature mismatch: {X_inf_df.shape[1]} vs {input_size}")
 
