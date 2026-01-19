@@ -8,7 +8,8 @@ from pathlib import Path
 from torch.utils.data import DataLoader
 
 from models.LSTM import LSTM_two_layers
-import Pipeline  # 👈 IMPORTAMOS EL MÓDULO, NO LOS SÍMBOLOS
+from Pipeline import TimeSeriesDataset, load_split
+  # 👈 IMPORTAMOS EL MÓDULO, NO LOS SÍMBOLOS
 
 # ======================================================
 # =================== HELPERS ==========================
@@ -61,9 +62,9 @@ def run_inference():
     )
 
     # ------------------ LOAD DATA ---------------------
-    inf_x, inf_y = Pipeline.load_split("inference", DATA_PATH)
+    inf_x, inf_y = load_split("inference", DATA_PATH)
 
-    ds_inf = Pipeline.TimeSeriesDataset(
+    ds_inf = TimeSeriesDataset(
         inf_x,
         inf_y,
         length=cfg["length"],
