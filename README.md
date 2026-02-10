@@ -52,11 +52,11 @@ Para clonar repositorio:
 git clone https://github.com/USUARIO/pv-forecasting-australia.git
 cd pv-forecasting-australia
 
-Instalar dependencias:
+### Instalar dependencias:
 pip install -r requirements.txt
 
-Entrenar modelo:
+### Entrenar modelo:
 python Main.py
 
-Inferencia:
+### Inferencia:
 python inference.py
