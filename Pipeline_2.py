@@ -1,6 +1,7 @@
 # ======================================================
 # ===============        IMPORTS        ================
 # ======================================================
+from scipy import stats
 import yaml
 import torch
 import torch.nn as nn
@@ -8,11 +9,11 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from torch.utils.data import Dataset, DataLoader
+import matplotlib.pyplot as plt
+import pickle
 
 from utils.graph_pipeline import (
-    plot_continuous_horizon0,
     plot_one_day,
-    plot_scatter_real_vs_pred,
 )
 
 from models.LSTM import LSTM_two_layers
@@ -20,15 +21,15 @@ from models.GRU import GRU_two_layers
 from models.LSTM_FCN import LSTM_FCN
 
 # ======================================================
-# ===============      DATASET        ==================
+# ===============        DATASET        ================
 # ======================================================
 
 class TimeSeriesDataset(Dataset):
     """
-    Dataset para forecasting con:
-    - ventana de pasado (length)
+    Dataset for forecasting with:
+    - lookback window (length)
     - lag
-    - horizonte futuro (output_window)
+    - future horizon (output_window)
     """
 
     def __init__(
@@ -40,10 +41,10 @@ class TimeSeriesDataset(Dataset):
         output_window: int,
         stride: int = 1,
     ):
-        assert len(X) == len(y), "X e y deben tener la misma longitud"
+        assert len(X) == len(y), "X and y must have the same length"
 
         self.X = torch.tensor(X, dtype=torch.float32)
-        self.y = torch.tensor(y, dtype=torch.float32)
+        self.y = torch.tensor(y, dtype=torch.float32).view(-1, 1)
 
         if self.y.ndim == 2:
             self.y = self.y.squeeze(-1)
@@ -53,9 +54,9 @@ class TimeSeriesDataset(Dataset):
         self.output_window = output_window
         self.stride = stride
 
-        N = len(X)
+        n_samples = len(X)
         t0_min = lag + length
-        t0_max = N - output_window
+        t0_max = n_samples - output_window
 
         self.forecast_starts = np.arange(t0_min, t0_max + 1, stride)
 
@@ -72,13 +73,13 @@ class TimeSeriesDataset(Dataset):
 
 
 # ======================================================
-# ===============      TRAINING        =================
+# ===============       TRAINING        =================
 # ======================================================
 
-def training_model(model, dataloader, num_epochs, learning_rate, device):
+def train_model(model, dataloader, num_epochs, learning_rate, device):
     model.to(device)
     criterion = nn.L1Loss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,weight_decay=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
 
     for epoch in range(num_epochs):
         model.train()
@@ -102,7 +103,7 @@ def training_model(model, dataloader, num_epochs, learning_rate, device):
 
 
 # ======================================================
-# ===============      EVALUATE        =================
+# ===============       EVALUATE        =================
 # ======================================================
 
 def evaluate_model(model, dataloader, device):
@@ -137,7 +138,7 @@ def evaluate_model(model, dataloader, device):
 
 
 # ======================================================
-# ===============      METRICS        ==================
+# ===============        METRICS        ==================
 # ======================================================
 
 def mase(y_true, y_pred, y_train, m=24):
@@ -147,7 +148,7 @@ def mase(y_true, y_pred, y_train, m=24):
 
 
 # ======================================================
-# ===============      IO UTILS       ==================
+# ===============       IO UTILS        ==================
 # ======================================================
 
 def load_split(name, base_path, y_col="Energy"):
@@ -160,18 +161,18 @@ def load_split(name, base_path, y_col="Energy"):
 
 
 # ======================================================
-# ===============      MAIN          ===================
+# ===============         MAIN          ===================
 # ======================================================
 
 CONFIG_PATH = "./config/timeseries.yaml"
 DATA_PATH = "./data/Processed"
-CHECKPOINT_DIR = Path("./checkpoints")
-CHECKPOINT_DIR.mkdir(exist_ok=True)
+DRIVE_BASE_PATH = Path("/content/drive/MyDrive/IA_Project")
+CHECKPOINT_DIR = DRIVE_BASE_PATH / "checkpoints"
 
-training_model_exexution = True
+run_model_training = True
 
 
-def training():
+def main():
     # --------------------------------------------------
     # Config & device
     # --------------------------------------------------
@@ -195,7 +196,6 @@ def training():
     hidden_size = config["model"]["hidden_size"]
     output_window = config["model"]["output_window"]
     output_size = config["model"]["output_size"]
-    dropout = config["model"]["dropout"]
 
     batch_size = config["model"]["batch_size"]
     num_epochs = config["model"]["epochs"]
@@ -219,14 +219,14 @@ def training():
     # --------------------------------------------------
     MODEL_ZOO = {
         "LSTM": lambda: LSTM_two_layers(
-            input_size, hidden_size, output_size, dropout = 0.25
+            input_size, hidden_size, output_size, dropout=0.25
         ),
         "GRU": lambda: GRU_two_layers(
-            input_size, hidden_size, output_size, dropout = 0.15
+            input_size, hidden_size, output_size, dropout=0.15
         ),
         "LSTM_FCN": lambda: LSTM_FCN(
             input_size=input_size,
-            hidden_size=96,
+            hidden_size=128,
             output_window=output_window,
             dropout=0.35,
         ),
@@ -247,8 +247,8 @@ def training():
 
         model = model_fn().to(device)
 
-        if training_model_exexution:
-            training_model(
+        if run_model_training:
+            train_model(
                 model,
                 dl_train,
                 num_epochs=num_epochs,
@@ -282,6 +282,7 @@ def training():
     # SAVE BEST MODEL
     # --------------------------------------------------
     best_model_path = CHECKPOINT_DIR / f"best_model_{best_model_name}.pt"
+    print(f"📁 Saving the best model to: {best_model_path}")
 
     torch.save(
         {
@@ -293,7 +294,7 @@ def training():
         best_model_path,
     )
 
-    print(f"Best model saved at: {best_model_path}")
+    print(f"✅ Model successfully saved to Drive: {best_model_path}")
 
     # --------------------------------------------------
     # TEST (BEST MODEL ONLY)
@@ -302,10 +303,21 @@ def training():
         best_model, dl_test, device
     )
 
-    test_preds_real = np.expm1(test_preds)
-    test_targets_real = np.expm1(test_targets)
+    # --- DE-NORMALIZE ---
+    with open(f"{DATA_PATH}/stats.pkl", "rb") as f:
+        stats = pickle.load(f)
 
-    train_y_real = np.expm1(train_y)
+    y_mu = stats["Y"]["mu"]["Energy"]
+    y_std = stats["Y"]["std"]["Energy"]
+
+    test_preds_real = (test_preds * y_std) + y_mu
+    test_targets_real = (test_targets * y_std) + y_mu
+
+    train_y_real = (train_y * y_std) + y_mu
+
+    # Validar varianza
+    if np.var(test_targets_real) < 1e-6:
+        print("ALERT: Real data has no variability. Check the inference.xlsx file")
 
     mae_test_h0 = np.mean(
         np.abs(test_preds_real[:, 0] - test_targets_real[:, 0])
@@ -325,17 +337,13 @@ def training():
     # --------------------------------------------------
     # GRAPHS
     # --------------------------------------------------
-    plot_continuous_horizon0(
-        test_targets_real,
-        test_preds_real,
-        start_idx=0,
-        n_days=10,
-    )
 
+    plt.figure(figsize=(6, 6))
     plot_one_day(test_targets_real, test_preds_real, day_idx=20)
+    plt.show()
 
-    plot_scatter_real_vs_pred(test_targets_real, test_preds_real)
+    return best_model_path
 
 
 if __name__ == "__main__":
-    training()
+    main()
